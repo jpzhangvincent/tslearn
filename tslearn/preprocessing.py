@@ -114,6 +114,9 @@ class TimeSeriesScalerMinMax(TransformerMixin):
         self.value_range = value_range
         self.min_ = min
         self.max_ = max
+        self.global_min = None
+        self.global_max = None
+
 
     def fit(self, X, y=None, **kwargs):
         """A dummy method such that it complies to the sklearn requirements.
@@ -164,13 +167,33 @@ class TimeSeriesScalerMinMax(TransformerMixin):
                              " than maximum. Got %s." % str(self.value_range))
 
         X_ = to_time_series_dataset(X)
-        min_t = numpy.min(X_, axis=1)[:, numpy.newaxis, :]
-        max_t = numpy.max(X_, axis=1)[:, numpy.newaxis, :]
-        range_t = max_t - min_t
-        nomin = (X_ - min_t) * (self.value_range[1] - self.value_range[0])
+        self.global_min = numpy.min(X_, axis=1)[:, numpy.newaxis, :]
+        self.global_max = numpy.max(X_, axis=1)[:, numpy.newaxis, :]
+        range_t = self.global_max - self.global_min
+        nomin = (X_ - self.global_min) * (self.value_range[1] - self.value_range[0])
         X_ = nomin / range_t + self.value_range[0]
         return X_
 
+    def inv_transform(self, X, **kwargs):
+        """Scale back the data to the original representation
+
+        Parameters
+        ----------
+        X
+            Time series dataset to be inverse rescaled
+
+        Returns
+        -------
+        numpy.ndarray
+            Inverse Rescaled time series dataset
+        """
+        if self.global_max is not None and self.global_min is not None:
+            range_t = self.global_max - self.global_min
+            nomin = (X - self.value_range[0]) * range_t
+            X_ = nomin / (self.value_range[1] - self.value_range[0]) + self.global_min
+            return X_
+        else:
+            warnings.warn('`fit_transform` should be called before `inv_transform`')
 
 class TimeSeriesScalerMeanVariance(TransformerMixin):
     """Scaler for time series. Scales time series so that their mean (resp.
@@ -231,10 +254,30 @@ class TimeSeriesScalerMeanVariance(TransformerMixin):
             Rescaled time series dataset
         """
         X_ = to_time_series_dataset(X)
-        mean_t = numpy.mean(X_, axis=1)[:, numpy.newaxis, :]
-        std_t = numpy.std(X_, axis=1)[:, numpy.newaxis, :]
-        std_t[std_t == 0.] = 1.
+        self.global_mean = numpy.mean(X_, axis=1)[:, numpy.newaxis, :]
+        self.global_std = numpy.std(X_, axis=1)[:, numpy.newaxis, :]
+        self.global_std[self.global_std == 0.] = 1.
 
-        X_ = (X_ - mean_t) * self.std_ / std_t + self.mu_
+        X_ = (X_ - self.global_mean) * self.std_ / self.global_std + self.mu_
 
         return X_
+
+    def inv_transform(self, X, **kwargs):
+        """Scale back the data to the original representation
+
+        Parameters
+        ----------
+        X
+            Time series dataset to be inverse rescaled
+
+        Returns
+        -------
+        numpy.ndarray
+            Inverse Rescaled time series dataset
+        """
+        if self.global_mean is not None and self.global_std is not None:
+            X_ = X * self.global_std + self.global_mean
+            return X_
+        else:
+            warnings.warn('`fit_transform` should be called before `inv_transform`')
+
