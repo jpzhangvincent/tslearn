@@ -276,7 +276,7 @@ class TimeSeriesScalerMeanVariance(TransformerMixin):
             Inverse Rescaled time series dataset
         """
         if self.global_mean is not None and self.global_std is not None:
-            X_ = X * self.global_std + self.global_mean
+            X_ = (X - self.mu_) * self.global_std / self.std_ + self.global_mean
             return X_
         else:
             warnings.warn('`fit_transform` should be called before `inv_transform`')
